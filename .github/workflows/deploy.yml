@@ -1,0 +1,77 @@
+name: Deploy to ECS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ecs
+  cancel-in-progress: false
+
+env:
+  AWS_REGION:   eu-west-2
+  ECR_REPO:     portfolio-api
+
+jobs:
+  deploy:
+    name: Build, push, and deploy
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      # Log in to ECR so Docker can push to it
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Build the Docker image, tag it with the Git commit SHA for traceability,
+      # and also tag it as "latest" for the task definition to reference
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG:    ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPO:latest
+          docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPO:latest
+          echo "IMAGE=$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" >> $GITHUB_ENV
+
+      # Download the current task definition, update it with the new image tag,
+      # register the new version, and update the ECS service to use it.
+      # ECS handles the rolling deploy from here.
+      - name: Update ECS task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-family: ${{ secrets.ECS_TASK_FAMILY }}
+          container-name:         portfolio-api
+          image:                  ${{ env.IMAGE }}
+
+      - name: Deploy to ECS service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition:  ${{ steps.task-def.outputs.task-definition }}
+          service:          ${{ secrets.ECS_SERVICE_NAME }}
+          cluster:          ${{ secrets.ECS_CLUSTER_NAME }}
+          wait-for-service-stability: true
+
+      - name: Print live URL
+        run: |
+          echo "Deployment complete!"
+          echo "App is live at: http://${{ secrets.ALB_DNS_NAME }}"
+          echo "API docs at: http://${{ secrets.ALB_DNS_NAME }}/docs"

@@ -1,0 +1,14 @@
+.git
+.github
+terraform/
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.env
+README.md
