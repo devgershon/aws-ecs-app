@@ -227,7 +227,7 @@ The ALB is the only resource here with a meaningful ongoing cost.
 
 | Resource | Approximate cost |
 |---|---|
-| ALB | ~$0.008/hour (~$6/month minimum) |
+| ALB | $6/month minimum |
 | Fargate (256 CPU, 512 MB, 1 task) | ~$0.01/hour |
 | ECR | $0.10/GB/month storage |
 | CloudWatch Logs | First 5 GB/month free |
